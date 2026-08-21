@@ -21,6 +21,8 @@ public class EmergencyRequest {
 
     private String status;
 
+    private String priority;
+
     private Double latitude;
 
     private Double longitude;
@@ -104,6 +106,14 @@ public class EmergencyRequest {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getPriority() {
+        return priority;
+    }
+
+    public void setPriority(String priority) {
+        this.priority = priority;
     }
 
     public double getLatitude() {

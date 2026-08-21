@@ -45,6 +45,19 @@ public class AssignmentController {
         }
     }
 
+    @PostMapping("/smart/{emergencyRequestId}")
+    public ResponseEntity<?> smartDispatch(@PathVariable Long emergencyRequestId) {
+        if (!emergencyRequestRepository.existsById(emergencyRequestId)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("Emergency request not found with id: " + emergencyRequestId);
+        }
+
+        return assignmentService.smartDispatch(emergencyRequestId)
+                .<ResponseEntity<?>>map(response -> new ResponseEntity<>(response, HttpStatus.CREATED))
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("No available ambulance found for emergency request"));
+    }
+
     @GetMapping
     public ResponseEntity<List<Assignment>> getAllAssignments() {
         return ResponseEntity.ok(assignmentService.getAllAssignments());

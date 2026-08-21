@@ -1,5 +1,6 @@
 package com.pradnyesh.emergencybackend.service;
 
+import com.pradnyesh.emergencybackend.dto.SmartDispatchResponse;
 import com.pradnyesh.emergencybackend.entity.Ambulance;
 import com.pradnyesh.emergencybackend.entity.Assignment;
 import com.pradnyesh.emergencybackend.entity.EmergencyRequest;
@@ -19,15 +20,18 @@ public class AssignmentService {
     private final EmergencyRequestRepository emergencyRequestRepository;
     private final AmbulanceRepository ambulanceRepository;
     private final AmbulanceService ambulanceService;
+    private final EmergencyPriorityService emergencyPriorityService;
 
     public AssignmentService(AssignmentRepository assignmentRepository,
                              EmergencyRequestRepository emergencyRequestRepository,
                              AmbulanceRepository ambulanceRepository,
-                             AmbulanceService ambulanceService) {
+                             AmbulanceService ambulanceService,
+                             EmergencyPriorityService emergencyPriorityService) {
         this.assignmentRepository = assignmentRepository;
         this.emergencyRequestRepository = emergencyRequestRepository;
         this.ambulanceRepository = ambulanceRepository;
         this.ambulanceService = ambulanceService;
+        this.emergencyPriorityService = emergencyPriorityService;
     }
 
     public Assignment createAssignment(Assignment assignment) {
@@ -123,6 +127,15 @@ public class AssignmentService {
     }
 
     public Optional<Assignment> autoAssignAmbulance(Long emergencyRequestId) {
+        Optional<SmartDispatchResponse> responseOpt = smartDispatch(emergencyRequestId);
+        if (responseOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        SmartDispatchResponse response = responseOpt.get();
+        return assignmentRepository.findById(response.getAssignmentId());
+    }
+
+    public Optional<SmartDispatchResponse> smartDispatch(Long emergencyRequestId) {
         Optional<EmergencyRequest> emergencyRequestOpt = emergencyRequestRepository.findById(emergencyRequestId);
         if (emergencyRequestOpt.isEmpty()) {
             return Optional.empty();
@@ -130,23 +143,53 @@ public class AssignmentService {
 
         EmergencyRequest emergencyRequest = emergencyRequestOpt.get();
 
+        // 1. Calculate Priority using EmergencyPriorityService
+        String priority = emergencyRequest.getPriority();
+        if (priority == null || priority.trim().isEmpty()) {
+            priority = emergencyPriorityService.calculatePriority(emergencyRequest);
+            emergencyRequest.setPriority(priority);
+        }
+
+        // 2. Check if an active assignment already exists for this emergency request
         List<Assignment> existingAssignments = assignmentRepository.findByEmergencyRequestId(emergencyRequestId);
         for (Assignment existing : existingAssignments) {
             if ("ASSIGNED".equalsIgnoreCase(existing.getStatus()) || "IN_PROGRESS".equalsIgnoreCase(existing.getStatus())) {
-                return Optional.of(existing);
+                Optional<Ambulance> ambOpt = ambulanceRepository.findById(existing.getAmbulanceId());
+                if (ambOpt.isPresent()) {
+                    Ambulance amb = ambOpt.get();
+                    double dist = ambulanceService.calculateDistanceBetween(emergencyRequest.getLatitude(), emergencyRequest.getLongitude(), amb.getLatitude(), amb.getLongitude());
+                    double roundedDist = Math.round(dist * 100.0) / 100.0;
+                    emergencyRequestRepository.save(emergencyRequest);
+                    return Optional.of(new SmartDispatchResponse(
+                            existing.getId(),
+                            emergencyRequestId,
+                            amb.getId(),
+                            amb.getAmbulanceNumber(),
+                            amb.getAmbulanceType(),
+                            amb.getDriverName(),
+                            amb.getDriverPhone(),
+                            priority,
+                            roundedDist,
+                            existing.getStatus(),
+                            existing.getAssignedAt()
+                    ));
+                }
             }
         }
 
+        // 3. Find smart available ambulance (preferring ALS/ICU for HIGH/CRITICAL)
         double lat = emergencyRequest.getLatitude();
         double lon = emergencyRequest.getLongitude();
 
-        Optional<Ambulance> nearestAmbulanceOpt = ambulanceService.findNearestAvailableAmbulance(lat, lon);
-        if (nearestAmbulanceOpt.isEmpty()) {
+        Optional<Ambulance> smartAmbulanceOpt = ambulanceService.findSmartAvailableAmbulance(lat, lon, priority);
+        if (smartAmbulanceOpt.isEmpty()) {
+            emergencyRequestRepository.save(emergencyRequest);
             return Optional.empty();
         }
 
-        Ambulance ambulance = nearestAmbulanceOpt.get();
+        Ambulance ambulance = smartAmbulanceOpt.get();
         if (!"AVAILABLE".equalsIgnoreCase(ambulance.getStatus())) {
+            emergencyRequestRepository.save(emergencyRequest);
             return Optional.empty();
         }
 
@@ -161,7 +204,25 @@ public class AssignmentService {
         assignment.setAmbulanceId(ambulance.getId());
         assignment.setStatus("ASSIGNED");
         assignment.setAssignedAt(LocalDateTime.now());
+        Assignment savedAssignment = assignmentRepository.save(assignment);
 
-        return Optional.of(assignmentRepository.save(assignment));
+        double distanceKm = ambulanceService.calculateDistanceBetween(lat, lon, ambulance.getLatitude(), ambulance.getLongitude());
+        double roundedDistance = Math.round(distanceKm * 100.0) / 100.0;
+
+        SmartDispatchResponse response = new SmartDispatchResponse(
+                savedAssignment.getId(),
+                emergencyRequestId,
+                ambulance.getId(),
+                ambulance.getAmbulanceNumber(),
+                ambulance.getAmbulanceType(),
+                ambulance.getDriverName(),
+                ambulance.getDriverPhone(),
+                priority,
+                roundedDistance,
+                "ASSIGNED",
+                savedAssignment.getAssignedAt()
+        );
+
+        return Optional.of(response);
     }
 }

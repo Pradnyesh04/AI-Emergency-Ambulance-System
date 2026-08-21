@@ -13,11 +13,14 @@ public class EmergencyRequestService {
 
     private final EmergencyRequestRepository emergencyRequestRepository;
     private final AssignmentService assignmentService;
+    private final EmergencyPriorityService emergencyPriorityService;
 
     public EmergencyRequestService(EmergencyRequestRepository emergencyRequestRepository,
-                                  AssignmentService assignmentService) {
+                                  AssignmentService assignmentService,
+                                  EmergencyPriorityService emergencyPriorityService) {
         this.emergencyRequestRepository = emergencyRequestRepository;
         this.assignmentService = assignmentService;
+        this.emergencyPriorityService = emergencyPriorityService;
     }
 
     public EmergencyRequest createEmergencyRequest(EmergencyRequest emergencyRequest) {
@@ -27,11 +30,14 @@ public class EmergencyRequestService {
         if (emergencyRequest.getStatus() == null || emergencyRequest.getStatus().trim().isEmpty()) {
             emergencyRequest.setStatus("PENDING");
         }
+        if (emergencyRequest.getPriority() == null || emergencyRequest.getPriority().trim().isEmpty()) {
+            emergencyRequest.setPriority(emergencyPriorityService.calculatePriority(emergencyRequest));
+        }
 
         EmergencyRequest savedRequest = emergencyRequestRepository.save(emergencyRequest);
 
-        // Attempt automatic ambulance assignment upon emergency creation
-        assignmentService.autoAssignAmbulance(savedRequest.getId());
+        // Attempt automatic ambulance assignment upon emergency creation using smart dispatch logic
+        assignmentService.smartDispatch(savedRequest.getId());
 
         // Return updated request status (ASSIGNED if ambulance was found, or PENDING if none available)
         return emergencyRequestRepository.findById(savedRequest.getId()).orElse(savedRequest);

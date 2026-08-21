@@ -84,6 +84,41 @@ public class AmbulanceService {
         return Optional.ofNullable(nearestAmbulance);
     }
 
+    public Optional<Ambulance> findSmartAvailableAmbulance(double latitude, double longitude, String priority) {
+        List<Ambulance> availableAmbulances = getAvailableAmbulances();
+        if (availableAmbulances.isEmpty()) {
+            return Optional.empty();
+        }
+
+        boolean preferALS = "HIGH".equalsIgnoreCase(priority) || "CRITICAL".equalsIgnoreCase(priority);
+
+        if (preferALS) {
+            Ambulance nearestALS = null;
+            double minDistanceALS = Double.MAX_VALUE;
+
+            for (Ambulance ambulance : availableAmbulances) {
+                String type = ambulance.getAmbulanceType() != null ? ambulance.getAmbulanceType().toUpperCase() : "";
+                if (type.contains("ALS") || type.contains("ICU") || type.contains("ADVANCED")) {
+                    double distance = calculateDistance(latitude, longitude, ambulance.getLatitude(), ambulance.getLongitude());
+                    if (distance < minDistanceALS) {
+                        minDistanceALS = distance;
+                        nearestALS = ambulance;
+                    }
+                }
+            }
+
+            if (nearestALS != null) {
+                return Optional.of(nearestALS);
+            }
+        }
+
+        return findNearestAvailableAmbulance(latitude, longitude);
+    }
+
+    public double calculateDistanceBetween(double lat1, double lon1, double lat2, double lon2) {
+        return calculateDistance(lat1, lon1, lat2, lon2);
+    }
+
     private double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
         final double EARTH_RADIUS = 6371.0; // Earth's radius in kilometers
 
