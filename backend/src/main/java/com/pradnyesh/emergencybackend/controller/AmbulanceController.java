@@ -34,6 +34,15 @@ public class AmbulanceController {
         return ResponseEntity.ok(ambulanceService.getAvailableAmbulances());
     }
 
+    @GetMapping("/nearest")
+    public ResponseEntity<?> getNearestAvailableAmbulance(
+            @RequestParam double latitude,
+            @RequestParam double longitude) {
+        return ambulanceService.findNearestAvailableAmbulance(latitude, longitude)
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body("No available ambulance found"));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Ambulance> getAmbulanceById(@PathVariable Long id) {
         return ambulanceService.getAmbulanceById(id)

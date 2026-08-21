@@ -20,6 +20,10 @@ public class EmergencyRequest {
 
     private String status;
 
+    private Double latitude;
+
+    private Double longitude;
+
     public EmergencyRequest() {
     }
 
@@ -29,6 +33,16 @@ public class EmergencyRequest {
         this.emergencyType = emergencyType;
         this.location = location;
         this.status = status;
+    }
+
+    public EmergencyRequest(String patientName, String phoneNumber, String emergencyType, String location, String status, Double latitude, Double longitude) {
+        this.patientName = patientName;
+        this.phoneNumber = phoneNumber;
+        this.emergencyType = emergencyType;
+        this.location = location;
+        this.status = status;
+        this.latitude = latitude;
+        this.longitude = longitude;
     }
 
     public Long getId() {
@@ -77,5 +91,35 @@ public class EmergencyRequest {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public double getLatitude() {
+        if ((latitude == null || latitude == 0.0) && location != null && location.contains(",")) {
+            try {
+                String[] parts = location.split(",");
+                return Double.parseDouble(parts[0].trim());
+            } catch (Exception ignored) {
+            }
+        }
+        return latitude != null ? latitude : 0.0;
+    }
+
+    public void setLatitude(Double latitude) {
+        this.latitude = latitude;
+    }
+
+    public double getLongitude() {
+        if ((longitude == null || longitude == 0.0) && location != null && location.contains(",")) {
+            try {
+                String[] parts = location.split(",");
+                return Double.parseDouble(parts[1].trim());
+            } catch (Exception ignored) {
+            }
+        }
+        return longitude != null ? longitude : 0.0;
+    }
+
+    public void setLongitude(Double longitude) {
+        this.longitude = longitude;
     }
 }
