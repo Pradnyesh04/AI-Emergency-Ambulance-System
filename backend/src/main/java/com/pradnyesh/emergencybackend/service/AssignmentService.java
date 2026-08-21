@@ -34,15 +34,26 @@ public class AssignmentService {
         if (assignment.getAssignedAt() == null) {
             assignment.setAssignedAt(LocalDateTime.now());
         }
-        if (assignment.getStatus() == null) {
+        if (assignment.getStatus() == null || assignment.getStatus().trim().isEmpty()) {
             assignment.setStatus("ASSIGNED");
         }
+
         if (assignment.getAmbulanceId() != null) {
             ambulanceRepository.findById(assignment.getAmbulanceId()).ifPresent(ambulance -> {
-                ambulance.setStatus("ASSIGNED");
-                ambulanceRepository.save(ambulance);
+                if ("AVAILABLE".equalsIgnoreCase(ambulance.getStatus())) {
+                    ambulance.setStatus("ASSIGNED");
+                    ambulanceRepository.save(ambulance);
+                }
             });
         }
+
+        if (assignment.getEmergencyRequestId() != null) {
+            emergencyRequestRepository.findById(assignment.getEmergencyRequestId()).ifPresent(req -> {
+                req.setStatus("ASSIGNED");
+                emergencyRequestRepository.save(req);
+            });
+        }
+
         return assignmentRepository.save(assignment);
     }
 
@@ -56,23 +67,40 @@ public class AssignmentService {
 
     public Optional<Assignment> updateAssignmentStatus(Long id, String status) {
         return assignmentRepository.findById(id).map(assignment -> {
-            assignment.setStatus(status);
-            if ("COMPLETED".equalsIgnoreCase(status) || "CANCELLED".equalsIgnoreCase(status)) {
-                assignment.setCompletedAt(LocalDateTime.now());
-                if (assignment.getAmbulanceId() != null) {
-                    ambulanceRepository.findById(assignment.getAmbulanceId()).ifPresent(ambulance -> {
-                        ambulance.setStatus("AVAILABLE");
-                        ambulanceRepository.save(ambulance);
-                    });
-                }
-            } else if ("ASSIGNED".equalsIgnoreCase(status)) {
-                if (assignment.getAmbulanceId() != null) {
-                    ambulanceRepository.findById(assignment.getAmbulanceId()).ifPresent(ambulance -> {
-                        ambulance.setStatus("ASSIGNED");
-                        ambulanceRepository.save(ambulance);
-                    });
+            String upperStatus = status != null ? status.trim().toUpperCase() : "ASSIGNED";
+            assignment.setStatus(upperStatus);
+
+            if ("COMPLETED".equals(upperStatus) || "CANCELLED".equals(upperStatus)) {
+                if (assignment.getCompletedAt() == null) {
+                    assignment.setCompletedAt(LocalDateTime.now());
                 }
             }
+
+            if (assignment.getEmergencyRequestId() != null) {
+                emergencyRequestRepository.findById(assignment.getEmergencyRequestId()).ifPresent(req -> {
+                    req.setStatus(upperStatus);
+                    emergencyRequestRepository.save(req);
+                });
+            }
+
+            if (assignment.getAmbulanceId() != null) {
+                ambulanceRepository.findById(assignment.getAmbulanceId()).ifPresent(amb -> {
+                    switch (upperStatus) {
+                        case "ASSIGNED":
+                            amb.setStatus("ASSIGNED");
+                            break;
+                        case "IN_PROGRESS":
+                            amb.setStatus("BUSY");
+                            break;
+                        case "COMPLETED":
+                        case "CANCELLED":
+                            amb.setStatus("AVAILABLE");
+                            break;
+                    }
+                    ambulanceRepository.save(amb);
+                });
+            }
+
             return assignmentRepository.save(assignment);
         });
     }
@@ -81,7 +109,8 @@ public class AssignmentService {
         Optional<Assignment> assignmentOptional = assignmentRepository.findById(id);
         if (assignmentOptional.isPresent()) {
             Assignment assignment = assignmentOptional.get();
-            if ("ASSIGNED".equalsIgnoreCase(assignment.getStatus()) && assignment.getAmbulanceId() != null) {
+            if (("ASSIGNED".equalsIgnoreCase(assignment.getStatus()) || "IN_PROGRESS".equalsIgnoreCase(assignment.getStatus()))
+                    && assignment.getAmbulanceId() != null) {
                 ambulanceRepository.findById(assignment.getAmbulanceId()).ifPresent(ambulance -> {
                     ambulance.setStatus("AVAILABLE");
                     ambulanceRepository.save(ambulance);
@@ -100,6 +129,14 @@ public class AssignmentService {
         }
 
         EmergencyRequest emergencyRequest = emergencyRequestOpt.get();
+
+        List<Assignment> existingAssignments = assignmentRepository.findByEmergencyRequestId(emergencyRequestId);
+        for (Assignment existing : existingAssignments) {
+            if ("ASSIGNED".equalsIgnoreCase(existing.getStatus()) || "IN_PROGRESS".equalsIgnoreCase(existing.getStatus())) {
+                return Optional.of(existing);
+            }
+        }
+
         double lat = emergencyRequest.getLatitude();
         double lon = emergencyRequest.getLongitude();
 
@@ -109,6 +146,10 @@ public class AssignmentService {
         }
 
         Ambulance ambulance = nearestAmbulanceOpt.get();
+        if (!"AVAILABLE".equalsIgnoreCase(ambulance.getStatus())) {
+            return Optional.empty();
+        }
+
         ambulance.setStatus("ASSIGNED");
         ambulanceRepository.save(ambulance);
 

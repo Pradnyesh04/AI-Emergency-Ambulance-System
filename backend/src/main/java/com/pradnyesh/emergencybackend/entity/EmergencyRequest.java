@@ -1,6 +1,7 @@
 package com.pradnyesh.emergencybackend.entity;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "emergency_requests")
@@ -24,6 +25,8 @@ public class EmergencyRequest {
 
     private Double longitude;
 
+    private LocalDateTime createdAt;
+
     public EmergencyRequest() {
     }
 
@@ -43,6 +46,16 @@ public class EmergencyRequest {
         this.status = status;
         this.latitude = latitude;
         this.longitude = longitude;
+    }
+
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+        if (status == null || status.trim().isEmpty()) {
+            status = "PENDING";
+        }
     }
 
     public Long getId() {
@@ -121,5 +134,13 @@ public class EmergencyRequest {
 
     public void setLongitude(Double longitude) {
         this.longitude = longitude;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
     }
 }
